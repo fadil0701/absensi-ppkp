@@ -71,14 +71,6 @@
                             <i class="fas fa-info-circle me-1"></i>
                             Login untuk Admin/Pegawai
                         </small>
-                        <div class="mt-2">
-                            <small class="text-muted d-block">
-                                Admin: admin@ppkp.go.id / password
-                            </small>
-                            <small class="text-muted d-block">
-                                Pegawai: pegawai1@ppkp.go.id / password
-                            </small>
-                        </div>
                     </div>
                 </div>
             </div>
