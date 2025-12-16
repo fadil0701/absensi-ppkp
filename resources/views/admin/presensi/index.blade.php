@@ -62,7 +62,7 @@
                         <th>Pegawai</th>
                         <th>Jenis</th>
                         <th>Waktu</th>
-                        <th>Unit</th>
+                        <th>Unit Kerja</th>
                         <th>Jarak</th>
                         <th>Status</th>
                         <th>Aksi</th>

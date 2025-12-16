@@ -49,9 +49,9 @@
                             </td>
                             <td>
                                 @if($p->jenis === 'check_in')
-                                    <span class="badge bg-success">Check In</span>
+                                    <span class="badge bg-success">Absen Masuk</span>
                                 @else
-                                    <span class="badge bg-info">Check Out</span>
+                                    <span class="badge bg-info">Absen Pulang</span>
                                 @endif
                             </td>
                             <td>{{ $p->waktu_absen->format('H:i:s') }}</td>

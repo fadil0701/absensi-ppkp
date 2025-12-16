@@ -66,7 +66,7 @@
                         <td>{{ $presensi->satpelkes->nama_satpelkes ?? '-' }}</td>
                     </tr>
                     <tr>
-                        <th>Jarak ke Satpelkes</th>
+                        <th>Jarak ke Unit Kerja</th>
                         <td>{{ $presensi->jarak_ke_satpelkes ? number_format($presensi->jarak_ke_satpelkes, 2) . ' meter' : '-' }}</td>
                     </tr>
                     <tr>
@@ -106,10 +106,11 @@
                 </div>
                 <div class="card-body">
                     <div class="text-center">
-                        <img src="{{ Storage::disk('public')->url($presensi->foto_watermark) }}" 
+                        <img src="{{ asset('storage/' . $presensi->foto_watermark) }}" 
                              alt="Foto Presensi" 
                              class="img-fluid rounded shadow-sm presensi-photo img-presensi"
-                             data-image-url="{{ Storage::disk('public')->url($presensi->foto_watermark) }}">
+                             data-image-url="{{ asset('storage/' . $presensi->foto_watermark) }}"
+                             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'300\'%3E%3Crect fill=\'%23ddd\' width=\'400\' height=\'300\'/%3E%3Ctext fill=\'%23999\' font-family=\'sans-serif\' font-size=\'18\' dy=\'10.5\' font-weight=\'bold\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\'%3EFoto tidak ditemukan%3C/text%3E%3C/svg%3E';">
                         <p class="text-muted mt-2 mb-0">
                             <small><i class="fas fa-info-circle me-1"></i>Klik foto untuk melihat ukuran penuh</small>
                         </p>
@@ -125,10 +126,11 @@
                 </div>
                 <div class="card-body">
                     <div class="text-center">
-                        <img src="{{ Storage::disk('public')->url($presensi->foto_asli) }}" 
+                        <img src="{{ asset('storage/' . $presensi->foto_asli) }}" 
                              alt="Foto Asli" 
                              class="img-fluid rounded shadow-sm presensi-photo img-presensi"
-                             data-image-url="{{ Storage::disk('public')->url($presensi->foto_asli) }}">
+                             data-image-url="{{ asset('storage/' . $presensi->foto_asli) }}"
+                             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'300\'%3E%3Crect fill=\'%23ddd\' width=\'400\' height=\'300\'/%3E%3Ctext fill=\'%23999\' font-family=\'sans-serif\' font-size=\'18\' dy=\'10.5\' font-weight=\'bold\' x=\'50%25\' y=\'50%25\' text-anchor=\'middle\'%3EFoto tidak ditemukan%3C/text%3E%3C/svg%3E';">
                         <p class="text-muted mt-2 mb-0">
                             <small><i class="fas fa-info-circle me-1"></i>Klik foto untuk melihat ukuran penuh</small>
                         </p>

@@ -20,6 +20,24 @@ use App\Http\Controllers\Admin\IzinCutiController;
 |--------------------------------------------------------------------------
 */
 
+// Storage file route (untuk serve file storage jika symlink tidak bekerja)
+Route::get('/storage/{path}', function ($path) {
+    $filePath = storage_path('app/public/' . $path);
+    
+    if (!file_exists($filePath)) {
+        abort(404);
+    }
+    
+    $mimeType = mime_content_type($filePath);
+    if (!$mimeType) {
+        $mimeType = 'application/octet-stream';
+    }
+    
+    return response()->file($filePath, [
+        'Content-Type' => $mimeType,
+    ]);
+})->where('path', '.*')->name('storage.file');
+
 // Auth Routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
