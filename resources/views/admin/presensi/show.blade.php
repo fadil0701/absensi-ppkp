@@ -106,11 +106,10 @@
                 </div>
                 <div class="card-body">
                     <div class="text-center">
-                        <img src="{{ asset('storage/' . $presensi->foto_watermark) }}" 
+                        <img src="{{ Storage::disk('public')->url($presensi->foto_watermark) }}" 
                              alt="Foto Presensi" 
-                             class="img-fluid rounded shadow-sm presensi-photo" 
-                             class="img-presensi"
-                             data-image-url="{{ asset('storage/' . $presensi->foto_watermark) }}">
+                             class="img-fluid rounded shadow-sm presensi-photo img-presensi"
+                             data-image-url="{{ Storage::disk('public')->url($presensi->foto_watermark) }}">
                         <p class="text-muted mt-2 mb-0">
                             <small><i class="fas fa-info-circle me-1"></i>Klik foto untuk melihat ukuran penuh</small>
                         </p>
@@ -126,11 +125,10 @@
                 </div>
                 <div class="card-body">
                     <div class="text-center">
-                        <img src="{{ asset('storage/' . $presensi->foto_asli) }}" 
+                        <img src="{{ Storage::disk('public')->url($presensi->foto_asli) }}" 
                              alt="Foto Asli" 
-                             class="img-fluid rounded shadow-sm presensi-photo" 
-                             class="img-presensi"
-                             data-image-url="{{ asset('storage/' . $presensi->foto_asli) }}">
+                             class="img-fluid rounded shadow-sm presensi-photo img-presensi"
+                             data-image-url="{{ Storage::disk('public')->url($presensi->foto_asli) }}">
                         <p class="text-muted mt-2 mb-0">
                             <small><i class="fas fa-info-circle me-1"></i>Klik foto untuk melihat ukuran penuh</small>
                         </p>
