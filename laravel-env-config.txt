@@ -1,0 +1,39 @@
+# ============================================
+# Laravel .env Configuration for Proxy Setup
+# Add/Update these variables in .env file
+# ============================================
+
+# Application URL (must include /absensi prefix)
+APP_URL=https://puspelkes.jakarta.go.id/absensi
+
+# Environment
+APP_ENV=production
+APP_DEBUG=false
+
+# Session Configuration (Critical for proxy)
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_SECURE_COOKIE=true
+SESSION_HTTP_ONLY=true
+SESSION_SAME_SITE=lax
+SESSION_PATH=/absensi
+
+# Cookie Domain (optional, leave empty for default behavior)
+# SESSION_DOMAIN=.puspelkes.jakarta.go.id
+
+# Trusted Proxy Configuration
+# Laravel 11 handles this differently, but ensure APP_URL is correct
+# For older Laravel versions, you may need TrustProxies middleware
+
+# Sanctum Configuration (if using API)
+SANCTUM_STATEFUL_DOMAINS=puspelkes.jakarta.go.id
+
+# Trust Proxy Headers (if using TrustProxies middleware)
+# TRUSTED_PROXIES=*
+
+# Additional Security
+APP_FORCE_HTTPS=true
+
+# Asset URL (for proper asset loading)
+ASSET_URL=https://puspelkes.jakarta.go.id/absensi
+
