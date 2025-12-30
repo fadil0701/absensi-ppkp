@@ -5,19 +5,22 @@
 @section('content')
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
     <h2 class="mb-2 mb-md-0"><i class="fas fa-briefcase me-2"></i>Tugas Luar</h2>
-    <a href="{{ route('tugas-luar.create') }}" class="btn btn-primary w-100 w-md-auto">
+</div>
+
+<div class="mb-3">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-1">
+    @if(auth('web')->user()->role === 'admin' || auth('web')->user()->role === 'pimpinan')
+        <div class="mb-3">
+            <a href="{{ route('tugas-luar.pending') }}" class="btn btn-warning">
+                <i class="fas fa-clock me-1"></i>Pending Approval
+            </a>
+        </div>
+    @endif
+
+    <a href="{{ route('tugas-luar.create') }}" class="btn btn-primary">
         <i class="fas fa-plus me-1"></i>Tambah Tugas Luar
     </a>
 </div>
-
-@if(auth('web')->user()->role === 'admin' || auth('web')->user()->role === 'pimpinan')
-    <div class="mb-3">
-        <a href="{{ route('tugas-luar.pending') }}" class="btn btn-warning">
-            <i class="fas fa-clock me-1"></i>Pending Approval
-        </a>
-    </div>
-@endif
-
 @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         <i class="fas fa-check-circle me-2"></i>{{ session('success') }}

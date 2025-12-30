@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
-use App\Models\Presensi;
-use App\Models\Pegawai;
-use App\Models\TugasLuar;
 use App\Models\IzinCuti;
 use App\Models\JadwalPegawai;
-use Illuminate\Support\Facades\DB;
+use App\Models\Pegawai;
+use App\Models\Presensi;
+use App\Models\TugasLuar;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class LaporanService
 {
@@ -40,13 +41,16 @@ class LaporanService
                 ->untukHari($presensi->tanggal)
                 ->first();
 
-            if ($jadwal) {
-                $jamMasukJadwal = Carbon::parse($jadwal->jam_masuk);
+            if ($jadwal && $jadwal->jam_masuk) {
+                // Parse jam_masuk dari jadwal (format: H:i atau H:i:s)
+                $jamMasukJadwal = Carbon::createFromFormat('H:i:s', $jadwal->jam_masuk.':00')->setDateFrom($presensi->tanggal);
                 $waktuCheckIn = Carbon::parse($presensi->waktu_absen);
-                $batasWaktu = $jamMasukJadwal->copy()->addMinutes($jadwal->toleransi_telat);
+                // Batas waktu = jam_masuk + toleransi_telat (dalam menit)
+                $batasWaktu = $jamMasukJadwal->copy()->addMinutes($jadwal->toleransi_telat ?? 0);
 
-                // Jika check-in lebih dari batas waktu (termasuk toleransi), maka telat
+                // Jika check-in lebih dari batas waktu (setelah toleransi), maka telat
                 if ($waktuCheckIn->greaterThan($batasWaktu)) {
+                    // Hitung selisih menit antara waktu check-in dengan batas waktu
                     $menitTelat = (int) $waktuCheckIn->diffInMinutes($batasWaktu);
 
                     $data[] = [
@@ -98,99 +102,99 @@ class LaporanService
             if ($currentDate->lte($hariIni)) {
                 // Hanya proses hari kerja (Senin-Jumat)
                 if ($currentDate->dayOfWeek >= 1 && $currentDate->dayOfWeek <= 5) {
-                $tanggal = $currentDate->format('Y-m-d');
-                $hari = $currentDate->locale('id')->isoFormat('dddd');
+                    $tanggal = $currentDate->format('Y-m-d');
+                    $hari = $currentDate->locale('id')->isoFormat('dddd');
 
-                // Loop setiap pegawai
-                foreach ($pegawaiList as $pegawai) {
-                    // Cek apakah pegawai punya jadwal aktif pada tanggal ini
-                    $jadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
-                        ->aktif()
-                        ->untukTanggal($tanggal)
-                        ->untukHari($tanggal)
-                        ->first();
-
-                    // Jika ada jadwal, berarti pegawai seharusnya masuk
-                    if ($jadwal) {
-                        // Cek apakah ada presensi check_in pada tanggal ini
-                        $presensiCheckIn = Presensi::where('pegawai_id', $pegawai->id)
-                            ->where('tanggal', $tanggal)
-                            ->where('jenis', 'check_in')
-                            ->where('status', '!=', 'REJECTED')
+                    // Loop setiap pegawai
+                    foreach ($pegawaiList as $pegawai) {
+                        // Cek apakah pegawai punya jadwal aktif pada tanggal ini
+                        $jadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
+                            ->aktif()
+                            ->untukTanggal($tanggal)
+                            ->untukHari($tanggal)
                             ->first();
 
-                        // Jika tidak ada presensi check_in
-                        if (!$presensiCheckIn) {
-                            // Cek apakah ada izin/cuti pada tanggal ini
-                            $izinCuti = IzinCuti::where('pegawai_id', $pegawai->id)
+                        // Jika ada jadwal, berarti pegawai seharusnya masuk
+                        if ($jadwal) {
+                            // Cek apakah ada presensi check_in pada tanggal ini
+                            $presensiCheckIn = Presensi::where('pegawai_id', $pegawai->id)
                                 ->where('tanggal', $tanggal)
+                                ->where('jenis', 'check_in')
+                                ->where('status', '!=', 'REJECTED')
                                 ->first();
 
-                            // Cek apakah ada tugas luar yang disetujui pada tanggal ini
-                            $tugasLuar = TugasLuar::where('pegawai_id', $pegawai->id)
-                                ->where('status', 'disetujui')
-                                ->where(function ($q) use ($tanggal) {
-                                    $q->where('tanggal_mulai', '<=', $tanggal)
-                                      ->where('tanggal_selesai', '>=', $tanggal);
-                                })
-                                ->first();
+                            // Jika tidak ada presensi check_in
+                            if (! $presensiCheckIn) {
+                                // Cek apakah ada izin/cuti pada tanggal ini
+                                $izinCuti = IzinCuti::where('pegawai_id', $pegawai->id)
+                                    ->where('tanggal', $tanggal)
+                                    ->first();
 
-                            // Prioritas: Izin/Cuti > Tugas Luar > Tidak Masuk
-                            if ($izinCuti) {
-                                // Jika izin/cuti sudah disetujui, jangan tampilkan di laporan tidak masuk
-                                // karena sudah ada alasan yang valid
-                                if ($izinCuti->status === 'disetujui') {
+                                // Cek apakah ada tugas luar yang disetujui pada tanggal ini
+                                $tugasLuar = TugasLuar::where('pegawai_id', $pegawai->id)
+                                    ->where('status', 'disetujui')
+                                    ->where(function ($q) use ($tanggal) {
+                                        $q->where('tanggal_mulai', '<=', $tanggal)
+                                            ->where('tanggal_selesai', '>=', $tanggal);
+                                    })
+                                    ->first();
+
+                                // Prioritas: Izin/Cuti > Tugas Luar > Tidak Masuk
+                                if ($izinCuti) {
+                                    // Jika izin/cuti sudah disetujui, jangan tampilkan di laporan tidak masuk
+                                    // karena sudah ada alasan yang valid
+                                    if ($izinCuti->status === 'disetujui') {
+                                        continue; // Skip, tidak perlu ditampilkan
+                                    }
+
+                                    // Jika izin/cuti ditolak atau pending, tampilkan
+                                    $statusKeterangan = ucfirst($izinCuti->jenis);
+                                    if ($izinCuti->status === 'ditolak') {
+                                        $statusKeterangan .= ' (Ditolak)';
+                                    } else {
+                                        $statusKeterangan .= ' (Pending)';
+                                    }
+
+                                    $data[] = [
+                                        'pegawai_id' => $pegawai->id,
+                                        'nip' => $pegawai->nip ?? '-',
+                                        'nama' => $pegawai->nama ?? '-',
+                                        'divisi' => $pegawai->divisi ?? '-',
+                                        'jabatan' => $pegawai->jabatan ?? '-',
+                                        'satpelkes_nama' => $pegawai->satpelkes->nama_satpelkes ?? '-',
+                                        'tanggal' => $tanggal,
+                                        'hari' => $hari,
+                                        'jam_masuk' => $jadwal->jam_masuk ?? '-',
+                                        'jam_keluar' => $jadwal->jam_keluar ?? '-',
+                                        'keterangan' => $izinCuti->keterangan ?? ucfirst($izinCuti->jenis),
+                                        'status_keterangan' => $statusKeterangan,
+                                        'izin_cuti_id' => $izinCuti->id,
+                                        'izin_cuti_status' => $izinCuti->status,
+                                    ];
+                                } elseif ($tugasLuar) {
+                                    // Jika ada tugas luar yang disetujui, jangan tampilkan di laporan tidak masuk
+                                    // karena sudah ada alasan yang valid
                                     continue; // Skip, tidak perlu ditampilkan
-                                }
-                                
-                                // Jika izin/cuti ditolak atau pending, tampilkan
-                                $statusKeterangan = ucfirst($izinCuti->jenis);
-                                if ($izinCuti->status === 'ditolak') {
-                                    $statusKeterangan .= ' (Ditolak)';
                                 } else {
-                                    $statusKeterangan .= ' (Pending)';
+                                    // Tidak ada izin/cuti dan tugas luar, maka tidak masuk
+                                    $data[] = [
+                                        'pegawai_id' => $pegawai->id,
+                                        'nip' => $pegawai->nip ?? '-',
+                                        'nama' => $pegawai->nama ?? '-',
+                                        'divisi' => $pegawai->divisi ?? '-',
+                                        'jabatan' => $pegawai->jabatan ?? '-',
+                                        'satpelkes_nama' => $pegawai->satpelkes->nama_satpelkes ?? '-',
+                                        'tanggal' => $tanggal,
+                                        'hari' => $hari,
+                                        'jam_masuk' => $jadwal->jam_masuk ?? '-',
+                                        'jam_keluar' => $jadwal->jam_keluar ?? '-',
+                                        'keterangan' => 'Tidak ada presensi',
+                                        'status_keterangan' => 'Tidak Masuk',
+                                    ];
                                 }
-
-                                $data[] = [
-                                    'pegawai_id' => $pegawai->id,
-                                    'nip' => $pegawai->nip ?? '-',
-                                    'nama' => $pegawai->nama ?? '-',
-                                    'divisi' => $pegawai->divisi ?? '-',
-                                    'jabatan' => $pegawai->jabatan ?? '-',
-                                    'satpelkes_nama' => $pegawai->satpelkes->nama_satpelkes ?? '-',
-                                    'tanggal' => $tanggal,
-                                    'hari' => $hari,
-                                    'jam_masuk' => $jadwal->jam_masuk ?? '-',
-                                    'jam_keluar' => $jadwal->jam_keluar ?? '-',
-                                    'keterangan' => $izinCuti->keterangan ?? ucfirst($izinCuti->jenis),
-                                    'status_keterangan' => $statusKeterangan,
-                                    'izin_cuti_id' => $izinCuti->id,
-                                    'izin_cuti_status' => $izinCuti->status,
-                                ];
-                            } elseif ($tugasLuar) {
-                                // Jika ada tugas luar yang disetujui, jangan tampilkan di laporan tidak masuk
-                                // karena sudah ada alasan yang valid
-                                continue; // Skip, tidak perlu ditampilkan
-                            } else {
-                                // Tidak ada izin/cuti dan tugas luar, maka tidak masuk
-                                $data[] = [
-                                    'pegawai_id' => $pegawai->id,
-                                    'nip' => $pegawai->nip ?? '-',
-                                    'nama' => $pegawai->nama ?? '-',
-                                    'divisi' => $pegawai->divisi ?? '-',
-                                    'jabatan' => $pegawai->jabatan ?? '-',
-                                    'satpelkes_nama' => $pegawai->satpelkes->nama_satpelkes ?? '-',
-                                    'tanggal' => $tanggal,
-                                    'hari' => $hari,
-                                    'jam_masuk' => $jadwal->jam_masuk ?? '-',
-                                    'jam_keluar' => $jadwal->jam_keluar ?? '-',
-                                    'keterangan' => 'Tidak ada presensi',
-                                    'status_keterangan' => 'Tidak Masuk',
-                                ];
                             }
                         }
                     }
-                }
                 }
             }
 
@@ -202,6 +206,7 @@ class LaporanService
             if ($a['tanggal'] === $b['tanggal']) {
                 return strcmp($a['nama'], $b['nama']);
             }
+
             return strcmp($b['tanggal'], $a['tanggal']);
         });
 
@@ -234,14 +239,26 @@ class LaporanService
                 ->untukHari($presensi->tanggal)
                 ->first();
 
-            if ($jadwal) {
-                $jamKeluarJadwal = Carbon::parse($jadwal->jam_keluar);
-                $waktuCheckOut = Carbon::parse($presensi->waktu_absen);
+            if ($jadwal && $jadwal->jam_keluar) {
+                try {
+                    // Parse jam_keluar dari jadwal - handle berbagai format
+                    $jamKeluarStr = $jadwal->jam_keluar;
+                    if (strlen($jamKeluarStr) == 5) {
+                        // Format H:i
+                        $jamKeluarJadwal = Carbon::createFromFormat('H:i', $jamKeluarStr)->setDateFrom($presensi->tanggal);
+                    } else {
+                        // Format H:i:s atau lainnya
+                        $jamKeluarJadwal = Carbon::parse($presensi->tanggal->format('Y-m-d').' '.$jamKeluarStr);
+                    }
+                    $waktuCheckOut = Carbon::parse($presensi->waktu_absen);
+                } catch (\Exception $e) {
+                    continue; // Skip jika error parsing
+                }
 
                 // Jika check-out lebih awal dari jam keluar jadwal
                 if ($waktuCheckOut->lessThan($jamKeluarJadwal)) {
                     $menitCepat = (int) $waktuCheckOut->diffInMinutes($jamKeluarJadwal);
-                    
+
                     // Ambil check_in untuk jam masuk
                     $checkIn = Presensi::where('pegawai_id', $presensi->pegawai_id)
                         ->where('tanggal', $presensi->tanggal)
@@ -273,7 +290,7 @@ class LaporanService
      */
     public function getStatistikDashboard(int $pegawaiId, ?string $bulan = null): array
     {
-        if (!$bulan) {
+        if (! $bulan) {
             $bulan = Carbon::now()->format('Y-m');
         }
 
@@ -397,7 +414,7 @@ class LaporanService
                                 ->where('status', 'disetujui')
                                 ->where(function ($q) use ($tanggal) {
                                     $q->where('tanggal_mulai', '<=', $tanggal)
-                                      ->where('tanggal_selesai', '>=', $tanggal);
+                                        ->where('tanggal_selesai', '>=', $tanggal);
                                 })
                                 ->first();
 
@@ -412,29 +429,32 @@ class LaporanService
                             // Jika ada presensi check_in
                             if ($presensiCheckIn) {
                                 $jamMasuk = $presensiCheckIn->waktu_absen->format('H:i:s');
-                                
+
                                 // Hitung telat masuk
-                                $jamMasukJadwal = Carbon::parse($jadwal->jam_masuk);
+                                // Parse jam_masuk dari jadwal (format: H:i atau H:i:s)
+                                $jamMasukJadwal = Carbon::createFromFormat('H:i:s', $jadwal->jam_masuk.':00')->setDateFrom($tanggal);
                                 $waktuCheckIn = Carbon::parse($presensiCheckIn->waktu_absen);
-                                $batasWaktu = $jamMasukJadwal->copy()->addMinutes($jadwal->toleransi_telat);
+                                // Batas waktu = jam_masuk + toleransi_telat (dalam menit)
+                                $batasWaktu = $jamMasukJadwal->copy()->addMinutes($jadwal->toleransi_telat ?? 0);
 
                                 if ($waktuCheckIn->greaterThan($batasWaktu)) {
                                     $menitTelat = (int) $waktuCheckIn->diffInMinutes($batasWaktu);
-                                    $telatMasuk = $menitTelat . ' menit';
+                                    $telatMasuk = $menitTelat.' menit';
                                 }
                             }
 
                             // Jika ada presensi check_out
                             if ($presensiCheckOut) {
                                 $jamPulang = $presensiCheckOut->waktu_absen->format('H:i:s');
-                                
+
                                 // Hitung pulang cepat
-                                $jamKeluarJadwal = Carbon::parse($jadwal->jam_keluar);
+                                // Parse jam_keluar dari jadwal (format: H:i atau H:i:s)
+                                $jamKeluarJadwal = Carbon::createFromFormat('H:i:s', $jadwal->jam_keluar.':00')->setDateFrom($tanggal);
                                 $waktuCheckOut = Carbon::parse($presensiCheckOut->waktu_absen);
 
                                 if ($waktuCheckOut->lessThan($jamKeluarJadwal)) {
                                     $menitCepat = (int) $waktuCheckOut->diffInMinutes($jamKeluarJadwal);
-                                    $pulangCepat = $menitCepat . ' menit';
+                                    $pulangCepat = $menitCepat.' menit';
                                 }
                             }
 
@@ -445,7 +465,7 @@ class LaporanService
                             } elseif ($tugasLuar) {
                                 $jenisAbsensi = 'Tugas Luar';
                                 $keterangan = $tugasLuar->keterangan ?? 'Tugas Luar';
-                            } elseif (!$presensiCheckIn) {
+                            } elseif (! $presensiCheckIn) {
                                 $jenisAbsensi = 'Tidak Masuk';
                                 $keterangan = 'Tidak ada presensi';
                             } elseif ($presensiCheckIn && $presensiCheckIn->keterangan) {
@@ -496,5 +516,251 @@ class LaporanService
 
         return $data;
     }
-}
 
+    /**
+     * Get akumulasi laporan per bulan per pegawai
+     */
+    public function getAkumulasiBulanan(string $bulan, ?int $pegawaiId = null): array
+    {
+        $tanggalMulai = Carbon::parse($bulan)->startOfMonth()->format('Y-m-d');
+        $tanggalSelesai = Carbon::parse($bulan)->endOfMonth()->format('Y-m-d');
+
+        // Ambil semua pegawai aktif
+        $queryPegawai = Pegawai::with('satpelkes')->where('status', 'aktif');
+        if ($pegawaiId) {
+            $queryPegawai->where('id', $pegawaiId);
+        }
+        $pegawaiList = $queryPegawai->get();
+
+        $data = [];
+        $hariIni = Carbon::today();
+
+        foreach ($pegawaiList as $pegawai) {
+            // Total Absensi (check_in yang approved/in_zone)
+            $totalAbsensi = Presensi::where('pegawai_id', $pegawai->id)
+                ->where('jenis', 'check_in')
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->whereIn('status', ['IN_ZONE', 'APPROVED'])
+                ->count();
+
+            // Cek apakah pegawai punya jadwal aktif
+            $hasJadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
+                ->aktif()
+                ->exists();
+
+            // Total Keterlambatan (dalam menit)
+            $presensiTelat = Presensi::where('pegawai_id', $pegawai->id)
+                ->where('jenis', 'check_in')
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->whereIn('status', ['IN_ZONE', 'APPROVED'])
+                ->get();
+
+            $totalMenitTelat = 0;
+            $jumlahTelat = 0;
+            foreach ($presensiTelat as $presensi) {
+                $jadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
+                    ->aktif()
+                    ->untukTanggal($presensi->tanggal)
+                    ->untukHari($presensi->tanggal)
+                    ->first();
+
+                if ($jadwal && $jadwal->jam_masuk) {
+                    try {
+                        // Parse jam_masuk dari jadwal - handle berbagai format
+                        $jamMasukStr = $jadwal->jam_masuk;
+                        if (strlen($jamMasukStr) == 5) {
+                            // Format H:i
+                            $jamMasukJadwal = Carbon::createFromFormat('H:i', $jamMasukStr)->setDateFrom($presensi->tanggal);
+                        } else {
+                            // Format H:i:s atau lainnya
+                            $jamMasukJadwal = Carbon::parse($presensi->tanggal->format('Y-m-d').' '.$jamMasukStr);
+                        }
+
+                        $waktuCheckIn = Carbon::parse($presensi->waktu_absen);
+
+                        // Batas waktu = jam_masuk + toleransi_telat (dalam menit)
+                        $toleransi = $jadwal->toleransi_telat ?? 0;
+                        $batasWaktu = $jamMasukJadwal->copy()->addMinutes($toleransi);
+
+                        // Jika check-in lebih dari batas waktu (setelah toleransi), maka telat
+                        if ($waktuCheckIn->greaterThan($batasWaktu)) {
+                            // Hitung selisih menit antara waktu check-in dengan batas waktu
+                            $menitTelat = (int) $waktuCheckIn->diffInMinutes($batasWaktu);
+                            $totalMenitTelat += $menitTelat;
+                            $jumlahTelat++;
+                        }
+                    } catch (\Exception $e) {
+                        // Skip jika ada error parsing
+                        Log::warning('Error parsing jam_masuk jadwal', [
+                            'pegawai_id' => $pegawai->id,
+                            'jadwal_id' => $jadwal->id,
+                            'jam_masuk' => $jadwal->jam_masuk,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            // Total Pulang Cepat (dalam menit)
+            $presensiPulangCepat = Presensi::where('pegawai_id', $pegawai->id)
+                ->where('jenis', 'check_out')
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->whereIn('status', ['IN_ZONE', 'APPROVED'])
+                ->get();
+
+            $totalMenitPulangCepat = 0;
+            $jumlahPulangCepat = 0;
+            foreach ($presensiPulangCepat as $presensi) {
+                $jadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
+                    ->aktif()
+                    ->untukTanggal($presensi->tanggal)
+                    ->untukHari($presensi->tanggal)
+                    ->first();
+
+                if ($jadwal && $jadwal->jam_keluar) {
+                    try {
+                        // Parse jam_keluar dari jadwal - handle berbagai format
+                        $jamKeluarStr = $jadwal->jam_keluar;
+                        if (strlen($jamKeluarStr) == 5) {
+                            // Format H:i
+                            $jamKeluarJadwal = Carbon::createFromFormat('H:i', $jamKeluarStr)->setDateFrom($presensi->tanggal);
+                        } else {
+                            // Format H:i:s atau lainnya
+                            $jamKeluarJadwal = Carbon::parse($presensi->tanggal->format('Y-m-d').' '.$jamKeluarStr);
+                        }
+
+                        $waktuCheckOut = Carbon::parse($presensi->waktu_absen);
+
+                        // Jika check-out lebih awal dari jam_keluar jadwal, maka pulang cepat
+                        if ($waktuCheckOut->lessThan($jamKeluarJadwal)) {
+                            // Hitung selisih menit antara jam_keluar jadwal dengan waktu check-out
+                            $menitCepat = (int) $waktuCheckOut->diffInMinutes($jamKeluarJadwal);
+                            $totalMenitPulangCepat += $menitCepat;
+                            $jumlahPulangCepat++;
+                        }
+                    } catch (\Exception $e) {
+                        // Skip jika ada error parsing
+                        Log::warning('Error parsing jam_keluar jadwal', [
+                            'pegawai_id' => $pegawai->id,
+                            'jadwal_id' => $jadwal->id,
+                            'jam_keluar' => $jadwal->jam_keluar,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            // Total Tidak Masuk
+            $tanggalMulaiCarbon = Carbon::parse($tanggalMulai);
+            $tanggalSelesaiCarbon = Carbon::parse($tanggalSelesai);
+            $totalTidakMasuk = 0;
+            $currentDate = $tanggalMulaiCarbon->copy();
+
+            while ($currentDate->lte($tanggalSelesaiCarbon)) {
+                if ($currentDate->lte($hariIni) && $currentDate->dayOfWeek >= 1 && $currentDate->dayOfWeek <= 5) {
+                    $tanggal = $currentDate->format('Y-m-d');
+                    $jadwal = JadwalPegawai::where('pegawai_id', $pegawai->id)
+                        ->aktif()
+                        ->untukTanggal($tanggal)
+                        ->untukHari($tanggal)
+                        ->first();
+
+                    if ($jadwal) {
+                        $presensiCheckIn = Presensi::where('pegawai_id', $pegawai->id)
+                            ->where('tanggal', $tanggal)
+                            ->where('jenis', 'check_in')
+                            ->where('status', '!=', 'REJECTED')
+                            ->first();
+
+                        if (! $presensiCheckIn) {
+                            // Cek apakah ada izin/cuti yang disetujui
+                            $izinCuti = IzinCuti::where('pegawai_id', $pegawai->id)
+                                ->where('tanggal', $tanggal)
+                                ->where('status', 'disetujui')
+                                ->first();
+
+                            // Cek apakah ada tugas luar yang disetujui
+                            $tugasLuar = TugasLuar::where('pegawai_id', $pegawai->id)
+                                ->where('status', 'disetujui')
+                                ->where(function ($q) use ($tanggal) {
+                                    $q->where('tanggal_mulai', '<=', $tanggal)
+                                        ->where('tanggal_selesai', '>=', $tanggal);
+                                })
+                                ->first();
+
+                            // Jika tidak ada izin/cuti atau tugas luar yang disetujui, maka tidak masuk
+                            if (! $izinCuti && ! $tugasLuar) {
+                                $totalTidakMasuk++;
+                            }
+                        }
+                    }
+                }
+                $currentDate->addDay();
+            }
+
+            // Total Cuti
+            $totalCuti = IzinCuti::where('pegawai_id', $pegawai->id)
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->where('status', 'disetujui')
+                ->where('jenis', 'cuti')
+                ->count();
+
+            // Total Izin
+            $totalIzin = IzinCuti::where('pegawai_id', $pegawai->id)
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->where('status', 'disetujui')
+                ->where('jenis', 'izin')
+                ->count();
+
+            // Total Sakit
+            $totalSakit = IzinCuti::where('pegawai_id', $pegawai->id)
+                ->whereBetween('tanggal', [$tanggalMulai, $tanggalSelesai])
+                ->where('status', 'disetujui')
+                ->where('jenis', 'sakit')
+                ->count();
+
+            // Total Tugas Luar
+            $totalTugasLuar = TugasLuar::where('pegawai_id', $pegawai->id)
+                ->where('status', 'disetujui')
+                ->where(function ($q) use ($tanggalMulai, $tanggalSelesai) {
+                    $q->whereBetween('tanggal_mulai', [$tanggalMulai, $tanggalSelesai])
+                        ->orWhereBetween('tanggal_selesai', [$tanggalMulai, $tanggalSelesai])
+                        ->orWhere(function ($query) use ($tanggalMulai, $tanggalSelesai) {
+                            $query->where('tanggal_mulai', '<=', $tanggalMulai)
+                                ->where('tanggal_selesai', '>=', $tanggalSelesai);
+                        });
+                })
+                ->count();
+
+            // Hitung hari kerja dalam bulan
+            $hariKerja = $this->getHariKerja($tanggalMulai, $tanggalSelesai);
+
+            $data[] = [
+                'pegawai_id' => $pegawai->id,
+                'nip' => $pegawai->nip ?? '-',
+                'nama' => $pegawai->nama ?? '-',
+                'jabatan' => $pegawai->jabatan ?? '-',
+                'satpelkes_nama' => $pegawai->satpelkes->nama_satpelkes ?? '-',
+                'total_absensi' => $totalAbsensi,
+                'total_menit_telat' => $totalMenitTelat,
+                'jumlah_telat' => $jumlahTelat,
+                'total_menit_pulang_cepat' => $totalMenitPulangCepat,
+                'jumlah_pulang_cepat' => $jumlahPulangCepat,
+                'total_tidak_masuk' => $totalTidakMasuk,
+                'total_cuti' => $totalCuti,
+                'total_izin' => $totalIzin,
+                'total_sakit' => $totalSakit,
+                'total_tugas_luar' => $totalTugasLuar,
+                'hari_kerja' => $hariKerja,
+                'persentase_kehadiran' => $hariKerja > 0 ? round(($totalAbsensi / $hariKerja) * 100, 2) : 0,
+            ];
+        }
+
+        // Sort by nama
+        usort($data, function ($a, $b) {
+            return strcmp($a['nama'], $b['nama']);
+        });
+
+        return $data;
+    }
+}

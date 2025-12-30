@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exports\LaporanPresensiExport;
 use App\Http\Controllers\Controller;
 use App\Services\LaporanService;
-use App\Exports\LaporanPresensiExport;
-use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
 
 class LaporanController extends Controller
 {
@@ -18,9 +18,45 @@ class LaporanController extends Controller
         $this->laporanService = $laporanService;
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        return view('admin.laporan.index');
+        $query = \App\Models\Presensi::with(['pegawai', 'satpelkes'])
+            ->where('status', '!=', 'REJECTED')
+            ->orderBy('tanggal', 'desc')
+            ->orderBy('waktu_absen', 'desc');
+
+        // Filter tanggal
+        if ($request->filled('tanggal_mulai')) {
+            $query->where('tanggal', '>=', $request->tanggal_mulai);
+        } else {
+            $query->where('tanggal', '>=', now()->startOfMonth()->format('Y-m-d'));
+        }
+
+        if ($request->filled('tanggal_selesai')) {
+            $query->where('tanggal', '<=', $request->tanggal_selesai);
+        } else {
+            $query->where('tanggal', '<=', now()->endOfMonth()->format('Y-m-d'));
+        }
+
+        // Filter pegawai
+        if (auth('web')->user()->role === 'pegawai') {
+            $query->where('pegawai_id', auth('web')->id());
+        } elseif ($request->filled('pegawai_id')) {
+            $query->where('pegawai_id', $request->pegawai_id);
+        }
+
+        // Filter jenis absen (berdasarkan status atau keterangan)
+        if ($request->filled('jenis_absen')) {
+            // Untuk jenis absen, kita perlu logic khusus karena tidak ada field langsung
+            // Ini akan di-handle di view atau service jika diperlukan
+        }
+
+        $presensi = $query->paginate(15)->withQueryString();
+
+        // Get list pegawai untuk dropdown
+        $pegawaiList = \App\Models\Pegawai::aktif()->orderBy('nama')->get();
+
+        return view('admin.laporan.index', compact('presensi', 'pegawaiList'));
     }
 
     public function telat(Request $request)
@@ -79,7 +115,7 @@ class LaporanController extends Controller
             $request->jenis_absen
         );
 
-        $filename = 'Laporan_Presensi_' . $request->tanggal_mulai . '_' . $request->tanggal_selesai . '.xlsx';
+        $filename = 'Laporan_Presensi_'.$request->tanggal_mulai.'_'.$request->tanggal_selesai.'.xlsx';
 
         return Excel::download(new LaporanPresensiExport($data), $filename);
     }
@@ -113,9 +149,26 @@ class LaporanController extends Controller
             'tanggalSelesai' => $tanggalSelesai,
         ])->setPaper('a4', 'landscape');
 
-        $filename = 'Laporan_Presensi_' . $request->tanggal_mulai . '_' . $request->tanggal_selesai . '.pdf';
+        $filename = 'Laporan_Presensi_'.$request->tanggal_mulai.'_'.$request->tanggal_selesai.'.pdf';
 
         return $pdf->download($filename);
     }
-}
 
+    /**
+     * Laporan akumulasi bulanan
+     */
+    public function akumulasi(Request $request)
+    {
+        // Default ke bulan ini jika tidak ada input
+        $bulan = $request->filled('bulan') ? $request->bulan : now()->format('Y-m');
+
+        $pegawaiId = auth('web')->user()->role === 'pegawai' ? auth('web')->id() : $request->pegawai_id;
+
+        $data = $this->laporanService->getAkumulasiBulanan($bulan, $pegawaiId);
+
+        // Get list pegawai untuk dropdown
+        $pegawaiList = \App\Models\Pegawai::aktif()->orderBy('nama')->get();
+
+        return view('admin.laporan.akumulasi', compact('data', 'pegawaiList', 'bulan'));
+    }
+}

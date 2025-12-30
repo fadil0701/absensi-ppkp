@@ -115,6 +115,13 @@
                             <i class="fas fa-chart-bar"></i> Laporan
                         </a>
                     @endif
+                    
+                    <!-- API Key Management (Admin Only) -->
+                    @if($userRole === 'admin')
+                        <a class="nav-link {{ request()->routeIs('api-keys.*') ? 'active' : '' }}" href="{{ route('api-keys.index') }}">
+                            <i class="fas fa-key"></i> API Key Management
+                        </a>
+                    @endif
                 </nav>
             </div>
 

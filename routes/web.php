@@ -1,18 +1,19 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\AbsensiController;
+use App\Http\Controllers\Admin\ApprovalController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\PegawaiController;
-use App\Http\Controllers\Admin\SatpelkesController;
-use App\Http\Controllers\Admin\PresensiController;
-use App\Http\Controllers\Admin\ApprovalController;
-use App\Http\Controllers\Admin\LaporanController;
-use App\Http\Controllers\Admin\AbsensiController;
-use App\Http\Controllers\Admin\TugasLuarController;
-use App\Http\Controllers\Admin\JadwalPegawaiController;
-use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\IzinCutiController;
+use App\Http\Controllers\Admin\JadwalPegawaiController;
+use App\Http\Controllers\Admin\LaporanController;
+use App\Http\Controllers\Admin\PegawaiController;
+use App\Http\Controllers\Admin\PresensiController;
+use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Admin\SatpelkesController;
+use App\Http\Controllers\Admin\TugasLuarController;
+use App\Http\Controllers\StorageController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,22 +22,20 @@ use App\Http\Controllers\Admin\IzinCutiController;
 */
 
 // Storage file route (untuk serve file storage jika symlink tidak bekerja)
-Route::get('/storage/{path}', function ($path) {
-    $filePath = storage_path('app/public/' . $path);
-    
-    if (!file_exists($filePath)) {
-        abort(404);
-    }
-    
-    $mimeType = mime_content_type($filePath);
-    if (!$mimeType) {
-        $mimeType = 'application/octet-stream';
-    }
-    
-    return response()->file($filePath, [
-        'Content-Type' => $mimeType,
-    ]);
-})->where('path', '.*')->name('storage.file');
+// Route ini harus di luar middleware auth agar bisa diakses untuk menampilkan gambar
+// Route ini publik dan tidak memerlukan autentikasi
+Route::get('/storage/{path}', [StorageController::class, 'serve'])
+    ->where('path', '.*')
+    ->name('storage.file');
+
+// Handle GET requests to Boost browser-logs endpoint (internal debugging route)
+// Route ini hanya untuk mencegah error MethodNotAllowed saat diakses via browser
+Route::get('/_boost/browser-logs', function () {
+    return response()->json([
+        'message' => 'This endpoint only accepts POST requests. Browser logs are sent via POST method.',
+        'error' => 'Method Not Allowed',
+    ], 405);
+})->name('boost.browser-logs.get');
 
 // Auth Routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -48,44 +47,45 @@ Route::middleware('auth:web')->group(function () {
     // Dashboard
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.index');
-    
+
     // Profile Pegawai (All Roles)
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    
+
     // Pegawai (Admin & Pimpinan only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::resource('pegawai', PegawaiController::class);
     });
-    
+
     // Satpelkes (Admin & Pimpinan only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::resource('satpelkes', SatpelkesController::class);
     });
-    
+
     // Absensi (All can do)
     Route::get('/absensi', [AbsensiController::class, 'index'])->name('absensi.index');
     Route::post('/absensi/checkin', [AbsensiController::class, 'checkIn'])->name('absensi.checkin');
     Route::post('/absensi/checkout', [AbsensiController::class, 'checkOut'])->name('absensi.checkout');
-    
+
     // Presensi (All can view, Admin/Pimpinan can manage)
     Route::get('/presensi', [PresensiController::class, 'index'])->name('presensi.index');
     Route::get('/presensi/{id}', [PresensiController::class, 'show'])->name('presensi.show');
-    
+
     // Approval (Pimpinan & Admin only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::get('/approval/pending', [ApprovalController::class, 'pending'])->name('approval.pending');
         Route::post('/approval/approve/{id}', [ApprovalController::class, 'approve'])->name('approval.approve');
         Route::post('/approval/reject/{id}', [ApprovalController::class, 'reject'])->name('approval.reject');
     });
-    
+
     // Tugas Luar (All can view, Admin/Pimpinan can approve)
-    Route::resource('tugas-luar', TugasLuarController::class);
+    // Route khusus harus didefinisikan SEBELUM route resource agar tidak tertangkap oleh parameter route
     Route::get('/tugas-luar/pending', [TugasLuarController::class, 'pending'])->name('tugas-luar.pending');
     Route::post('/tugas-luar/approve/{id}', [TugasLuarController::class, 'approve'])->name('tugas-luar.approve');
     Route::post('/tugas-luar/reject/{id}', [TugasLuarController::class, 'reject'])->name('tugas-luar.reject');
-    
+    Route::resource('tugas-luar', TugasLuarController::class);
+
     // Jadwal Pegawai (Admin & Pimpinan only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::get('/jadwal-pegawai', [JadwalPegawaiController::class, 'index'])->name('jadwal-pegawai.index');
@@ -98,16 +98,17 @@ Route::middleware('auth:web')->group(function () {
         Route::put('/jadwal-pegawai/{id}', [JadwalPegawaiController::class, 'update'])->name('jadwal-pegawai.update'); // Update jadwal tertentu
         Route::delete('/jadwal-pegawai/{id}', [JadwalPegawaiController::class, 'destroy'])->name('jadwal-pegawai.destroy'); // Delete jadwal tertentu
     });
-    
+
     // Laporan (Admin & Pimpinan only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::get('/laporan', [LaporanController::class, 'index'])->name('laporan.index');
+        Route::get('/laporan/akumulasi', [LaporanController::class, 'akumulasi'])->name('laporan.akumulasi');
         Route::get('/laporan/telat', [LaporanController::class, 'telat'])->name('laporan.telat');
         Route::get('/laporan/tidak-masuk', [LaporanController::class, 'tidakMasuk'])->name('laporan.tidakMasuk');
         Route::get('/laporan/export-excel', [LaporanController::class, 'exportExcel'])->name('laporan.export-excel');
         Route::get('/laporan/export-pdf', [LaporanController::class, 'exportPdf'])->name('laporan.export-pdf');
     });
-    
+
     // Izin/Cuti (Admin & Pimpinan only)
     Route::middleware('role:admin,pimpinan')->group(function () {
         Route::get('/izin-cuti/create', [IzinCutiController::class, 'create'])->name('izin-cuti.create');
@@ -117,5 +118,11 @@ Route::middleware('auth:web')->group(function () {
         Route::post('/izin-cuti/{id}/approve', [IzinCutiController::class, 'approve'])->name('izin-cuti.approve');
         Route::post('/izin-cuti/{id}/reject', [IzinCutiController::class, 'reject'])->name('izin-cuti.reject');
         Route::delete('/izin-cuti/{id}', [IzinCutiController::class, 'destroy'])->name('izin-cuti.destroy');
+    });
+
+    // API Key Management (Admin only)
+    Route::middleware('role:admin')->group(function () {
+        Route::resource('api-keys', \App\Http\Controllers\Admin\ApiKeyController::class);
+        Route::post('/api-keys/{id}/regenerate-secret', [\App\Http\Controllers\Admin\ApiKeyController::class, 'regenerateSecret'])->name('api-keys.regenerate-secret');
     });
 });
